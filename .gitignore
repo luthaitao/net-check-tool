@@ -1,0 +1,38 @@
+# ---- 本项目产物（体积大，均由源码构建，不入库）----
+*.exe
+dist/
+dist-desktop/
+node_modules/
+
+# ---- Python ----
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+venv/
+# 注意：本项目的 build/ 是脚本目录（build-exe.js / make-icon.py / icon.ico），需要入库，
+# 不能按模板里的通用规则整个 build/ 忽略掉。
+
+# ---- Node ----
+npm-debug.log*
+yarn-error.log*
+
+# ---- IDE / OS ----
+.idea/
+.vscode/
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# ---- 本地数据 / 助手痕迹 ----
+# 含有个人路径与内部笔记，不应公开
+.workbuddy/
+*.log
+.cache/
+.env
+
+# ---- Office/WPS 临时文件 ----
+~$*.docx
+~$*.pptx
+~$*.xlsx
+.~lock.*#
