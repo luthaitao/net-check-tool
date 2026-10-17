@@ -1,0 +1,61 @@
+{
+  "name": "net-check-tool",
+  "productName": "网络检查工具",
+  "version": "1.1.0",
+  "private": true,
+  "description": "网络检查工具 —— 端口连通性检测 + 类 Postman API 调试台（零依赖）",
+  "main": "electron-main.js",
+  "scripts": {
+    "start": "node server.js",
+    "desktop": "electron .",
+    "test": "node test/smoke.js",
+    "test:exe": "node test/smoke.js --exe",
+    "test:frontend": "node test/frontend-check.js",
+    "test:tip": "node test/tip-check.js",
+    "test:all": "node test/smoke.js && node test/frontend-check.js && node test/tip-check.js",
+    "build:sea": "node build/build-exe.js",
+    "build:desktop": "electron-builder --win portable",
+    "build:desktop:dir": "electron-builder --win dir",
+    "build": "node build/build-exe.js && electron-builder --win portable"
+  },
+  "engines": {
+    "node": ">=18.0.0"
+  },
+  "devDependencies": {
+    "electron": "^31.7.7",
+    "electron-builder": "^24.13.3"
+  },
+  "build": {
+    "appId": "com.octave.netcheckttool",
+    "productName": "网络检查工具",
+    "asar": true,
+    "files": [
+      "electron-main.js",
+      "server.js",
+      "lib/**/*",
+      "public/**/*",
+      "build/icon.ico",
+      "!**/*.map",
+      "!**/test/**",
+      "!**/.workbuddy/**"
+    ],
+    "directories": {
+      "output": "dist-desktop",
+      "buildResources": "build"
+    },
+    "win": {
+      "target": [
+        "portable"
+      ],
+      "icon": "build/icon.ico",
+      "artifactName": "网络检查工具-${version}-便携版.${ext}"
+    },
+    "portable": {
+      "artifactName": "网络检查工具-${version}-便携版.${ext}",
+      "requestExecutionLevel": "user",
+      "unicode": true
+    },
+    "npmRebuild": false,
+    "compression": "maximum"
+  }
+}
