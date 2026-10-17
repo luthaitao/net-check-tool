@@ -1,0 +1,8 @@
+# 统一按 LF 提交，避免 Windows 上产生大量 CRLF 差异
+* text=auto eol=lf
+
+# 二进制文件不做行尾转换
+*.ico binary
+*.png binary
+*.jpg binary
+*.exe binary
