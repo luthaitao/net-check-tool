@@ -1,0 +1,443 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>网络检查工具 — 端口检测 · API 调试</title>
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🔌</text></svg>">
+<link rel="stylesheet" href="/css/style.css">
+</head>
+<body>
+
+<header class="topbar">
+  <div class="brand">
+    <span class="logo">🔌</span>
+    <div>
+      <h1>网络检查工具</h1>
+      <p class="sub">端口连通性检测 · 类 Postman API 调试台</p>
+    </div>
+  </div>
+  <div class="topbar-right">
+    <span id="connBadge" class="badge badge-idle" title="本地后端连接状态">检测中…</span>
+  </div>
+</header>
+
+<nav class="tabs" role="tablist">
+  <button class="tab active" data-tab="port" role="tab" aria-selected="true">端口连通性检测</button>
+  <button class="tab" data-tab="api" role="tab" aria-selected="false">API 调试台</button>
+  <button class="tab" data-tab="sysinfo" role="tab" aria-selected="false">本机网络信息</button>
+</nav>
+
+<main>
+
+<!-- ═══════════════════════端口检测 ═══════════════════════ -->
+<section class="panel active" id="panel-port">
+  <div class="grid-2">
+
+    <div class="card">
+      <h2 class="card-title">检测目标</h2>
+
+      <div class="field">
+        <label for="pcHost">IP 地址 或 机器名</label>
+        <input type="text" id="pcHost" placeholder="例如 192.168.1.1、localhost、server01.corp.com"
+               autocomplete="off" spellcheck="false"
+               data-tip-title="要检测的目标主机"
+               data-tip="填写 IPv4/IPv6 地址，或可被 DNS 解析的机器名。机器名依赖本机 DNS/hosts，解析失败会直接报错。"
+               data-tip-ex="192.168.1.1    localhost    server01.corp.com    8.8.8.8    smtp.qq.com"
+               data-tip-warn="内网机器名通常需要连着公司网络/VPN 才能解析。">
+      </div>
+
+      <div class="field-row">
+        <div class="field grow">
+          <label for="pcPorts">端口（支持范围与批量）</label>
+          <input type="text" id="pcPorts" placeholder="80,443,8000-8010,22" autocomplete="off" spellcheck="false"
+                 data-tip-title="要检测的端口"
+                 data-tip="三种写法可任意混写，解析后会自动去重并按数字排序。区间最多展开 4000 个端口。"
+                 data-tip-ex="80        单个端口
+80,443,8080        多个端口
+8000-8100         端口区间（含首尾）
+1-100,443,8080    混写
+103-100           反向区间会自动纠正"
+                 data-tip-warn="扫内网网段前先确认是授权范围，避免触发安全告警。">
+          <p class="hint">支持 <code>80</code>、<code>80,443,8080</code>、<code>8000-8100</code> 混写</p>
+        </div>
+        <div class="field" style="width:110px">
+          <label for="pcTimeout">超时(ms)</label>
+          <input type="number" id="pcTimeout" value="1500" min="200" max="30000" step="100"
+                 data-tip-title="单端口超时时间"
+                 data-tip="每个端口最多等待多久。超过则判为「超时」——通常是防火墙静默丢包，不等于端口关闭。"
+                 data-tip-ex="局域网 500-1000    公网 2000-3000">
+          <p class="hint tiny">范围 200–30000</p>
+        </div>
+        <div class="field" style="width:110px">
+          <label for="pcConc">并发数</label>
+          <input type="number" id="pcConc" value="50" min="1" max="512" step="10"
+                 data-tip-title="同时检测的端口数量"
+                 data-tip="并发越高越快，但对目标机器和网络压力越大。不确定就用默认 50。"
+                 data-tip-ex="单端口 1    小范围 20-50    扫大段 100-200">
+          <p class="hint tiny">范围 1–512</p>
+        </div>
+      </div>
+
+      <div class="field-row">
+        <label class="check" data-tip-title="抓取 Banner"
+              data-tip="连上后被动读取服务握手首包，用于识别 SSH/MySQL/HTTP 等真实服务类型。"
+              data-tip-ex="SSH-2.0-OpenSSH_8.9        ← 识别为 SSH"
+              data-tip-warn="只读不发，不触发协议状态机，对生产设备无副作用。端口数 &gt; 50 时会自动关闭以提速。">
+          <input type="checkbox" id="pcBanner"> 抓取 Banner（识别服务类型，端口数 ≤50 时建议开启）
+        </label>
+      </div>
+
+      <div class="btn-row">
+        <button class="btn btn-primary" id="pcRun">开始检测</button>
+        <button class="btn" id="pcStop" disabled>停止</button>
+        <button class="btn btn-ghost" id="pcClear">清空结果</button>
+      </div>
+
+      <div class="presets">
+        <span class="presets-label">常用：</span>
+        <button class="chip" data-host="127.0.0.1">127.0.0.1</button>
+        <button class="chip" data-host="localhost">localhost</button>
+        <button class="chip" data-hosts="baidu.com" data-ports="80,443">baidu.com:80,443</button>
+        <button class="chip" data-hosts="www.baidu.com" data-ports="80,443,8080">www.baidu.com</button>
+      </div>
+
+      <div id="pcDns" class="dns-box hidden"></div>
+      <div id="pcProgressWrap" class="progress-wrap hidden">
+        <div class="progress"><div class="progress-bar" id="pcProgressBar"></div></div>
+        <span id="pcProgressText" class="progress-text">0 / 0</span>
+      </div>
+    </div>
+
+    <div class="card">
+      <h2 class="card-title">检测结果</h2>
+      <div id="pcStats" class="stats">
+        <div class="stat"><span class="stat-num" id="statTotal">—</span><span class="stat-label">已检测</span></div>
+        <div class="stat stat-open"><span class="stat-num" id="statOpen">—</span><span class="stat-label">开放</span></div>
+        <div class="stat stat-closed"><span class="stat-num" id="statClosed">—</span><span class="stat-label">未开放</span></div>
+        <div class="stat"><span class="stat-num" id="statTime">—</span><span class="stat-label">耗时</span></div>
+      </div>
+
+      <div class="toolbar">
+        <input type="search" id="pcFilter" placeholder="筛选端口 / 服务 / 状态…"
+               data-tip-title="筛选检测结果"
+               data-tip="在端口号、服务名、状态说明、Banner 内容里做模糊匹配。"
+               data-tip-ex="输入 redis    筛出服务名含 Redis 的端口
+输入 80       筛出端口号含 80 的端口" >
+        <label class="check" data-tip-title="只看开放端口"
+              data-tip="隐藏未开放的端口，快速聚焦真正对外提供服务的那几个。"
+              data-tip-ex="适合扫描大段端口后，只看服务清单">
+        <input type="checkbox" id="pcOnlyOpen"> 只看开放</label>
+        <button class="btn btn-sm" id="pcExport" data-tip-title="导出 CSV"
+                data-tip="把当前结果表导出为 CSV，带 BOM 头，Excel 打开中文不乱码。"
+                data-tip-ex="端口, 状态, 服务, 响应时间(ms), 错误码, 说明, Banner">导出 CSV</button>
+      </div>
+
+      <div class="table-wrap">
+        <table class="table" id="pcTable">
+          <thead><tr>
+            <th style="width:70px">端口</th>
+            <th style="width:80px">状态</th>
+            <th>服务 / 说明</th>
+            <th style="width:90px">响应时间</th>
+          </tr></thead>
+          <tbody id="pcTableBody">
+            <tr class="empty-row"><td colspan="4">输入目标后点击「开始检测」</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+
+  </div>
+</section>
+
+<!-- ═══════════════════════API 调试 ═══════════════════════ -->
+<section class="panel" id="panel-api">
+  <div class="api-layout">
+
+    <!-- 侧栏：环境变量 + 集合 + 历史 -->
+    <aside class="api-side">
+      <div class="side-block">
+        <div class="side-head">
+          <h3>环境变量</h3>
+          <button class="btn btn-mini" id="envAdd">＋</button>
+        </div>
+        <p class="hint tiny">URL / Header / Body 中用 <code>{{名称}}</code> 引用</p>
+        <div id="envList" class="kv-list"></div>
+      </div>
+
+      <div class="side-block">
+        <div class="side-head">
+          <h3>请求集合</h3>
+          <div>
+            <button class="btn btn-mini" id="saveReq">保存当前</button>
+            <button class="btn btn-mini" id="exportColl">导出</button>
+            <button class="btn btn-mini" id="importColl">导入</button>
+            <input type="file" id="importFile" accept=".json" hidden>
+          </div>
+        </div>
+        <div id="collList" class="coll-list"></div>
+      </div>
+
+      <div class="side-block">
+        <div class="side-head">
+          <h3>历史记录</h3>
+          <button class="btn btn-mini" id="clearHistory">清空</button>
+        </div>
+        <div id="historyList" class="hist-list"></div>
+      </div>
+    </aside>
+
+    <!-- 请求编辑区 -->
+    <div class="api-request card">
+      <div class="url-bar">
+        <select id="reqMethod" class="method-select"
+                data-tip-title="HTTP 方法"
+                data-tip="GET 查数据 / POST 新建或提交 / PUT 整体替换 / PATCH 局部更新 / DELETE 删除 / HEAD 只取响应头 / OPTIONS 探测支持的方法"
+                data-tip-ex="GET     读取
+POST    创建/提交表单或 JSON
+PUT     整体覆盖更新
+PATCH   局部更新
+DELETE  删除">
+          <option>GET</option><option>POST</option><option>PUT</option><option>PATCH</option>
+          <option>DELETE</option><option>HEAD</option><option>OPTIONS</option>
+        </select>
+        <input type="text" id="reqUrl" placeholder="输入 URL，例如 https://httpbin.org/get 或 127.0.0.1:8080/api" spellcheck="false"
+               data-tip-title="请求地址"
+               data-tip="写完整 URL；不带协议会自动补 http://。本工具走服务端转发，不受浏览器跨域限制。"
+               data-tip-ex="https://httpbin.org/get
+127.0.0.1:8080/api          ← 自动补 http://
+http://10.0.0.5:9200/_cat  ← 内网服务
+https://api.example.com/v1/users?page=1"
+               data-tip-warn="可使用环境变量：https://{{host}}/api/{{version}}/users">
+        <button class="btn btn-primary" id="reqSend">发送 <kbd>Ctrl</kbd>+<kbd>↵</kbd></button>
+      </div>
+
+      <div class="req-tabs" id="reqTabs">
+        <button class="req-tab active" data-pane="params">查询参数 <span class="count" id="cParams">0</span></button>
+        <button class="req-tab" data-pane="headers">请求头 <span class="count" id="cHeaders">0</span></button>
+        <button class="req-tab" data-pane="auth">鉴权</button>
+        <button class="req-tab" data-pane="body">请求体 <span class="count" id="cBody">0</span></button>
+        <button class="req-tab" data-pane="tests">断言 <span class="count" id="cTests">0</span></button>
+        <button class="req-tab" data-pane="settings">设置</button>
+      </div>
+
+      <div class="req-panes">
+        <div class="req-pane active" data-pane="params">
+          <div class="kv-table" id="paramsTable"></div>
+          <button class="btn btn-sm" data-add="params">＋ 添加参数</button>
+        </div>
+        <div class="req-pane" data-pane="headers">
+          <div class="kv-table" id="headersTable"></div>
+          <button class="btn btn-sm" data-add="headers">＋ 添加请求头</button>
+          <p class="hint">Header 名不区分大小写；留空表示不发送</p>
+        </div>
+        <div class="req-pane" data-pane="auth">
+          <div class="field">
+            <label for="authType">鉴权类型</label>
+            <select id="authType"
+                    data-tip-title="鉴权方式"
+                    data-tip="自动生成对应请求头/参数，不用手写 Base64。"
+                    data-tip-ex="None       不加任何鉴权
+Basic      用户名+密码 → Authorization: Basic xxx
+Bearer     令牌       → Authorization: Bearer xxx
+API Key    自定义键值，可放 Header 或 Query">
+              <option value="none">无鉴权</option>
+              <option value="basic">Basic Auth</option>
+              <option value="bearer">Bearer Token</option>
+              <option value="apikey">API Key</option>
+            </select>
+          </div>
+          <div id="authFields"></div>
+        </div>
+        <div class="req-pane" data-pane="body">
+          <div class="field">
+            <label for="bodyType">请求体类型</label>
+            <select id="bodyType"
+                    data-tip-title="请求体格式"
+                    data-tip="决定 body 怎么编码，并自动补上对应的 Content-Type（若你手动填了则以你的为准）。"
+                    data-tip-ex="none        不带请求体
+raw         任意文本，JSON/XML/HTML 都用它
+form        网页表单编码，key=value&key=value
+multipart   表单+文件上传，自动生成 boundary">
+              <option value="none">无</option>
+              <option value="raw">raw（JSON / XML / 文本）</option>
+              <option value="form">x-www-form-urlencoded</option>
+              <option value="multipart">multipart/form-data（可上传文件）</option>
+            </select>
+          </div>
+          <div id="bodyRawWrap" class="hidden">
+            <select id="rawContentType"
+                    data-tip-title="raw 的 Content-Type"
+                    data-tip="决定服务端如何解析请求体，需与实际内容一致。"
+                    data-tip-ex="application/json   JSON 接口
+application/xml    SOAP/XML 接口
+text/plain         纯文本
+text/html          HTML 表单/页面
+application/javascript  脚本">
+              <option value="application/json">JSON</option>
+              <option value="application/xml">XML</option>
+              <option value="text/plain">Text</option>
+              <option value="text/html">HTML</option>
+              <option value="application/javascript">JavaScript</option>
+            </select>
+            <textarea id="rawBody" rows="10" spellcheck="false" placeholder='{ "key": "value" }'></textarea>
+            <div class="btn-row">
+              <button class="btn btn-sm" id="formatJson">格式化 JSON</button>
+              <button class="btn btn-sm" id="beautifyXml">美化 XML</button>
+            </div>
+          </div>
+          <div id="bodyFormWrap" class="hidden">
+            <div class="kv-table" id="formTable"></div>
+            <button class="btn btn-sm" data-add="form">＋ 添加字段</button>
+          </div>
+          <div id="bodyMultiWrap" class="hidden">
+            <div class="kv-table" id="multipartTable"></div>
+            <button class="btn btn-sm" data-add="multipart">＋ 添加字段</button>
+            <p class="hint">字段类型选「文件」后可直接选择本地文件</p>
+          </div>
+        </div>
+        <div class="req-pane" data-pane="tests">
+          <p class="hint">断言在<b>服务端</b>对完整响应求值，不受前端显示长度限制。</p>
+          <div class="assert-head">
+            <button class="btn btn-sm" id="addAssert"
+                    data-tip-title="添加断言"
+                    data-tip="手工挑一个空白断言，自行设置来源、算子和期望值。"
+                    data-tip-ex="来源选「响应头」+ 算子「包含」+ 填 content-type / json 即可">＋ 添加断言</button>
+            <select id="assertPreset" class="preset-select"
+                    data-tip-title="快速插入模板"
+                    data-tip="一键插入常用断言，之后可再微调。"
+                    data-tip-ex="状态码 = 200        基本可用性
+状态码属于 2xx     放宽到任意成功
+响应时间 &lt; 500ms   性能基线
+JSON 中 code = 0   业务码校验
+Content-Type 含 json  确认返回了 JSON">
+              <option value="">快速插入模板…</option>
+              <option value="status200">状态码 = 200</option>
+              <option value="status2xx">状态码属于 2xx</option>
+              <option value="statusrange">响应时间 &lt; 500ms</option>
+              <option value="ctype">Content-Type 含 application/json</option>
+              <option value="code">JSON 中 code = 0</option>
+              <option value="msg">JSON 中 msg 非空</option>
+              <option value="datakeys">data 含字段 id 和 name</option>
+              <option value="hasToken">JSON 中含 token 字段</option>
+              <option value="len">JSON 数组长度 &gt; 0</option>
+            </select>
+          </div>
+          <div id="assertList" class="assert-list"></div>
+        </div>
+        <div class="req-pane" data-pane="settings">
+          <div class="field-row">
+            <div class="field" data-tip-title="请求超时"
+                 data-tip="超过该时间主动断开。调太小会误杀慢接口（如报表查询），太大则卡住界面。"
+                 data-tip-ex="普通查询    5000-10000
+慢接口      30000-120000
+上传大文件  60000 以上">
+              <label for="setTimeout">超时(ms)</label>
+              <input type="number" id="setTimeout" value="30000" min="200" max="300000" step="1000"></div>
+            <div class="field" data-tip-title="最大重定向次数"
+                 data-tip="跟随 301/302/303/307/308 时最多跳几跳，防止死循环。"
+                 data-tip-ex="3     常见登录跳转足够
+10    默认值，一般够用">
+              <label for="setMaxRedirect">最大重定向次数</label>
+              <input type="number" id="setMaxRedirect" value="10" min="0" max="20"></div>
+          </div>
+          <label class="check" data-tip-title="自动跟随重定向"
+                data-tip="开启则最终只返回重定向后的响应；关闭则停在 302/301，便于查看 Location 跳转去哪了。"
+                data-tip-ex="排查「登录后跳回首页」类问题时，关掉它就能看到跳转链路">
+          <input type="checkbox" id="setRedirect" checked> 自动跟随重定向（关闭可查看 302 跳转链路）</label>
+          <label class="check" data-tip-title="忽略 TLS 证书错误"
+                data-tip="跳过证书校验，用于调试自签名/已过期证书的内网 HTTPS 服务。"
+                data-tip-ex="自签名证书    内部测试环境
+过期证书      老设备
+仅调试用，生产环境切勿开启"
+                data-tip-warn="关闭证书校验会失去中间人攻击防护，务必仅在可信网络使用。">
+          <input type="checkbox" id="setInsecure"> 忽略 TLS 证书错误（自签名 / 过期证书调试）</label>
+          <p class="hint">跨域跳转时会自动剥离 Authorization，避免凭据泄漏到新主机。</p>
+        </div>
+      </div>
+    </div>
+
+    <!-- 响应区 -->
+    <div class="api-response card">
+      <div class="resp-head" id="respHead">
+        <span class="resp-status idle" id="respStatus">未发送</span>
+        <span class="resp-meta" id="respMeta">—</span>
+        <div class="resp-actions">
+          <button class="btn btn-sm" id="copyCurl" title="生成 cURL 命令"
+                  data-tip-title="复制 cURL 命令"
+                  data-tip="生成等价的 cURL 命令，环境变量已展开，可直接粘贴到终端复现问题。"
+                  data-tip-ex="curl -X POST https://api.example.com/login \
+  -H 'Content-Type: application/json' \
+  -d '{"user":"admin"}'
+粘贴进 Windows Terminal / Git Bash 即可执行">复制 cURL</button>
+          <button class="btn btn-sm" id="copyUrl" data-tip-title="复制 URL"
+                  data-tip="复制请求框里的原始 URL 文本。">复制 URL</button>
+          <button class="btn btn-sm" id="saveBody" data-tip-title="保存响应"
+                  data-tip="把响应存成文件：JSON 会格式化后存为 .json，二进制按原类型存为 .bin。"
+                  data-tip-ex="用于留档、附到缺陷单里">保存响应</button>
+        </div>
+      </div>
+
+      <div id="respTests" class="resp-tests hidden"></div>
+
+      <div class="req-tabs resp-tabs" id="respTabs">
+        <button class="req-tab active" data-rpane="body">响应体</button>
+        <button class="req-tab" data-rpane="headers">响应头 <span class="count" id="cRespHeaders">0</span></button>
+        <button class="req-tab" data-rpane="cookies">Cookie <span class="count" id="cCookies">0</span></button>
+        <button class="req-tab" data-rpane="timing">耗时分析</button>
+        <button class="req-tab" data-rpane="redirects">跳转链路 <span class="count" id="cRedirects">0</span></button>
+        <button class="req-tab" data-rpane="request">实际请求</button>
+        <button class="req-tab" data-rpane="preview">预览</button>
+      </div>
+
+      <div class="resp-panes">
+        <div class="resp-pane active" data-rpane="body">
+          <div class="resp-tools">
+            <input type="search" id="bodySearch" placeholder="在响应中查找…"
+                   data-tip-title="响应内容搜索"
+                   data-tip="在响应体里查找并高亮所有匹配位置，快速定位报错字段。"
+                   data-tip-ex="输入 error   找所有报错行
+输入 500     找状态码出现处">
+            <label class="check" data-tip-title="自动换行"
+                  data-tip="超长内容是否折行显示。JSON 层级深时建议开启。">
+            <input type="checkbox" id="bodyWrap"> 自动换行</label>
+            <button class="btn btn-sm" id="copyBody" data-tip-title="复制响应体"
+                    data-tip="把响应体原文复制到剪贴板。"
+                    data-tip-ex="粘贴到编辑器里做进一步分析">复制</button>
+          </div>
+          <pre class="code-view" id="respBody"><span class="placeholder">点击「发送」查看响应</span></pre>
+        </div>
+        <div class="resp-pane" data-rpane="headers"><div class="kv-view" id="respHeaders"><p class="placeholder">—</p></div></div>
+        <div class="resp-pane" data-rpane="cookies"><div class="kv-view" id="respCookies"><p class="placeholder">—</p></div></div>
+        <div class="resp-pane" data-rpane="timing"><div id="respTiming"><p class="placeholder">—</p></div></div>
+        <div class="resp-pane" data-rpane="redirects"><div id="respRedirects"><p class="placeholder">—</p></div></div>
+        <div class="resp-pane" data-rpane="request"><pre class="code-view" id="respRequest"><span class="placeholder">—</span></pre></div>
+        <div class="resp-pane" data-rpane="preview"><div id="respPreview" class="preview-box"><p class="placeholder">—</p></div></div>
+      </div>
+    </div>
+
+  </div>
+</section>
+
+<!-- ═══════════════════════本机信息 ═══════════════════════ -->
+<section class="panel" id="panel-sysinfo">
+  <div class="card">
+    <h2 class="card-title">本机网络信息</h2>
+    <p class="hint">排查「端口连不上」时，先确认本机网卡地址、是否存在代理或 VPN 网段。</p>
+    <div id="sysBody"><p class="placeholder">加载中…</p></div>
+  </div>
+</section>
+
+</main>
+
+<div id="toast" class="toast"></div>
+
+<script src="/js/util.js"></script>
+<script src="/js/tip.js"></script>
+<script src="/js/store.js"></script>
+<script src="/js/port-panel.js"></script>
+<script src="/js/api-panel.js"></script>
+<script src="/js/main.js"></script>
+</body>
+</html>
